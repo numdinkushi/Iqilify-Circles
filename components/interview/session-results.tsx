@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { getSdk, payForDebrief } from "@/lib/circles"
+import { buildReferralShareUrl, createReferralLink } from "@/lib/referrals"
 import { DEBRIEF_COST_CRC, TRACK_META } from "@/lib/interview/prompts"
 import { buildFeedback } from "@/lib/interview/scoring"
 import { SessionLoading, useClientSession } from "@/hooks/use-client-session"
@@ -21,11 +22,12 @@ import type { InterviewSession } from "@/lib/interview/types"
 const ORG_ADDRESS = process.env.NEXT_PUBLIC_IQLIFY_ORG_ADDRESS
 
 export function SessionResults({ sessionId }: { sessionId: string }) {
-  const { address } = useWallet()
+  const { address, isMiniappHost } = useWallet()
   const { session, ready, setSession } = useClientSession(sessionId)
   const { syncSession } = useSyncSessionToConvex()
   const addToConvexLeaderboard = useAddLeaderboardToConvex()
   const [paying, setPaying] = React.useState(false)
+  const [inviting, setInviting] = React.useState(false)
   const [displayName, setDisplayName] = React.useState("Anonymous builder")
 
   React.useEffect(() => {
@@ -109,10 +111,27 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
     }
   }
 
-  function shareInvite() {
-    const url = `${window.location.origin}/interview?ref=${address ?? "friend"}`
-    navigator.clipboard.writeText(url)
-    toast.success("Invite link copied — referrals count inside Circles")
+  async function shareInvite() {
+    if (!address) {
+      toast.error("Connect your Circles account first")
+      return
+    }
+    if (!isMiniappHost) {
+      toast.error("Open IQlify inside the Circles app to create referral links")
+      return
+    }
+
+    setInviting(true)
+    try {
+      const secret = await createReferralLink(address as `0x${string}`)
+      const url = buildReferralShareUrl(secret)
+      await navigator.clipboard.writeText(url)
+      toast.success("Invite link copied — friend opens it in Circles to create a wallet")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not create invite")
+    } finally {
+      setInviting(false)
+    }
   }
 
   return (
@@ -193,10 +212,18 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
             </div>
           )}
 
-          <Button variant="outline" className="w-full" onClick={shareInvite}>
-            <Copy />
-            Invite a friend to practice
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={shareInvite}
+            disabled={inviting || !address}
+          >
+            {inviting ? <LoaderCircle className="animate-spin" /> : <Copy />}
+            {inviting ? "Creating invite…" : "Invite a friend (Circles referral)"}
           </Button>
+          <p className="text-center text-xs text-muted-foreground">
+            Uses Circles referral secrets — costs invitation quota (~96 CRC) per new wallet.
+          </p>
         </CardContent>
       </Card>
     </div>

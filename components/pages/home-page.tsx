@@ -10,9 +10,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { TRACK_META } from "@/lib/interview/prompts"
+import { shortenAddress } from "@/lib/referrals"
 
 export function HomePage() {
-  const { isConnected, isMiniappHost } = useWallet()
+  const { isConnected, isMiniappHost, referralInviter, referralSecret } = useWallet()
 
   return (
     <div className="space-y-6">
@@ -29,7 +30,21 @@ export function HomePage() {
         </p>
       </section>
 
-      {!isConnected && isMiniappHost ? (
+      {referralSecret && !isConnected ? (
+        <Card className="border-emerald-500/30 bg-emerald-500/5">
+          <CardHeader>
+            <CardTitle className="text-base">You&apos;re invited</CardTitle>
+            <CardDescription>
+              {referralInviter
+                ? `${shortenAddress(referralInviter)} invited you to practice interviews on Circles.`
+                : "Create your Circles account to claim this referral invite."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CreateAccountButton />
+          </CardContent>
+        </Card>
+      ) : !isConnected && isMiniappHost ? (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Connect to start</CardTitle>
