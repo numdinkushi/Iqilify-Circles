@@ -51,6 +51,7 @@ export function listenOnce(timeoutMs = 15000): Promise<string> {
       return
     }
 
+    const instance = recognition
     let finished = false
 
     function finish(result: { ok: true; value: string } | { ok: false; error: Error }) {
@@ -58,7 +59,7 @@ export function listenOnce(timeoutMs = 15000): Promise<string> {
       finished = true
       clearTimeout(timeout)
       try {
-        recognition.stop()
+        instance.stop()
       } catch {
         // already stopped
       }

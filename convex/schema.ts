@@ -35,6 +35,9 @@ export default defineSchema({
     areasForImprovement: v.optional(v.array(v.string())),
     recommendation: v.optional(v.string()),
     debriefUnlocked: v.boolean(),
+    rewardClaimed: v.optional(v.boolean()),
+    rewardTxHash: v.optional(v.string()),
+    rewardAmountCrc: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

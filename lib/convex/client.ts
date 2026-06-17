@@ -58,6 +58,9 @@ export function useSyncSessionToConvex() {
         areasForImprovement: session.areasForImprovement,
         recommendation: session.recommendation,
         debriefUnlocked: session.debriefUnlocked,
+        rewardClaimed: session.rewardClaimed,
+        rewardTxHash: session.rewardTxHash,
+        rewardAmountCrc: session.rewardAmountCrc,
       })
     },
     [create, update]

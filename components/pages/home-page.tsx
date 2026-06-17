@@ -9,7 +9,8 @@ import { useWallet } from "@/components/wallet/wallet-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { TRACK_META } from "@/lib/interview/prompts"
+import { DEBRIEF_COST_CRC, TRACK_META } from "@/lib/interview/prompts"
+import { getRewardConfig } from "@/lib/rewards"
 import { shortenAddress } from "@/lib/referrals"
 
 export function HomePage() {
@@ -25,8 +26,8 @@ export function HomePage() {
           <span className="text-emerald-600">Earn with CRC.</span>
         </h1>
         <p className="text-sm leading-6 text-muted-foreground">
-          IQlify is AI interview prep built for the Circles ecosystem. Practice technical,
-          behavioral, and builder interviews — then unlock your full debrief with CRC.
+          IQlify is AI interview prep on Circles. Score {getRewardConfig().minScore}+ to earn native
+          CRC — then optionally unlock your full debrief for {DEBRIEF_COST_CRC} CRC.
         </p>
       </section>
 
@@ -91,7 +92,7 @@ export function HomePage() {
         <Card>
           <CardContent className="flex flex-col items-center gap-1 pt-4">
             <Wallet className="size-4" />
-            Pay in CRC
+            Earn CRC
           </CardContent>
         </Card>
       </div>

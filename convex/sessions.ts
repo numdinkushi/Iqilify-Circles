@@ -69,6 +69,10 @@ export const update = mutation({
     areasForImprovement: v.optional(v.array(v.string())),
     recommendation: v.optional(v.string()),
     debriefUnlocked: v.optional(v.boolean()),
+    rewardClaimed: v.optional(v.boolean()),
+    rewardTxHash: v.optional(v.string()),
+    rewardAmountCrc: v.optional(v.number()),
+    walletAddress: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { sessionId, ...updates } = args

@@ -33,6 +33,9 @@ export type InterviewSession = {
   completed: boolean
   score?: ScoreBreakdown
   debriefUnlocked: boolean
+  rewardClaimed?: boolean
+  rewardTxHash?: string
+  rewardAmountCrc?: number
   walletAddress?: string
   createdAt: number
   status: InterviewStatus

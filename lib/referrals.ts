@@ -78,6 +78,21 @@ export async function lookupReferralInviter(secret: string): Promise<string | nu
   }
 }
 
+/** Invite an existing Safe (not yet a Circles human) so they can register with this inviter. */
+export async function inviteExistingSafe(inviter: Address, invitee: Address): Promise<void> {
+  const invitations = await getInvitationsClient()
+  const setupTxs = await invitations.ensureInviterSetup(inviter)
+  if (setupTxs.length > 0) {
+    await submitViaHost(setupTxs.map(toEncodedTx))
+  }
+
+  const txs = await invitations.generateInvite(inviter, invitee)
+  if (txs.length === 0) {
+    throw new Error("No invitation transactions were generated.")
+  }
+  await submitViaHost(txs.map(toEncodedTx))
+}
+
 export async function createReferralLink(inviter: Address): Promise<string> {
   const quota = await getInviteQuota(inviter)
   if (quota < BigInt(1)) {

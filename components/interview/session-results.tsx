@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress"
 import { getSdk, payForDebrief } from "@/lib/circles"
 import { buildReferralShareUrl, createReferralLink } from "@/lib/referrals"
 import { DEBRIEF_COST_CRC, TRACK_META } from "@/lib/interview/prompts"
+import { getRewardConfig, isRewardEligible, rewardAmountForScore } from "@/lib/rewards"
 import { buildFeedback } from "@/lib/interview/scoring"
 import { SessionLoading, useClientSession } from "@/hooks/use-client-session"
 import { useAddLeaderboardToConvex, useSyncSessionToConvex } from "@/lib/convex/client"
@@ -27,8 +28,17 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
   const { syncSession } = useSyncSessionToConvex()
   const addToConvexLeaderboard = useAddLeaderboardToConvex()
   const [paying, setPaying] = React.useState(false)
+  const [claiming, setClaiming] = React.useState(false)
   const [inviting, setInviting] = React.useState(false)
   const [displayName, setDisplayName] = React.useState("Anonymous builder")
+
+  const rewardConfig = getRewardConfig()
+  const eligibleReward = session?.score ? rewardAmountForScore(session.score.overall) : 0
+  const canClaimReward =
+    !!session?.score &&
+    isRewardEligible(session.score.overall) &&
+    !session.rewardClaimed &&
+    !!address
 
   React.useEffect(() => {
     if (!address) return
@@ -111,6 +121,45 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
     }
   }
 
+  async function claimReward() {
+    if (!session?.score || !address) {
+      toast.error("Connect your Circles wallet to claim CRC")
+      return
+    }
+
+    setClaiming(true)
+    try {
+      const res = await fetch("/api/rewards/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: session.id, address }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error || "Could not claim reward")
+      }
+
+      const next: InterviewSession = {
+        ...session,
+        rewardClaimed: true,
+        rewardTxHash: data.txHash,
+        rewardAmountCrc: data.amountCrc,
+        walletAddress: address,
+      }
+      setSession(next)
+      saveSession(next)
+      void syncSession(next)
+
+      toast.success(`You earned ${data.amountCrc} CRC!`, {
+        description: data.explorerUrl ? "Reward sent on Gnosis Chain" : undefined,
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Reward claim failed")
+    } finally {
+      setClaiming(false)
+    }
+  }
+
   async function shareInvite() {
     if (!address) {
       toast.error("Connect your Circles account first")
@@ -180,6 +229,47 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
                 ))}
               </ul>
             </div>
+          ) : null}
+
+          {session.rewardClaimed ? (
+            <div className="space-y-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+              <Badge className="bg-emerald-600 text-white">CRC reward claimed</Badge>
+              <p className="text-sm">
+                You received <strong>{session.rewardAmountCrc ?? eligibleReward} CRC</strong> in your
+                Circles wallet.
+              </p>
+              {session.rewardTxHash ? (
+                <a
+                  href={`https://gnosisscan.io/tx/${session.rewardTxHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-xs text-emerald-700 underline dark:text-emerald-300"
+                >
+                  View on GnosisScan
+                </a>
+              ) : null}
+            </div>
+          ) : canClaimReward ? (
+            <Card className="border-emerald-500/30 bg-emerald-500/5">
+              <CardContent className="space-y-3 pt-6">
+                <p className="text-sm">
+                  Strong score — claim <strong>{eligibleReward} CRC</strong> sent from the IQlify
+                  treasury to your wallet.
+                </p>
+                <Button className="w-full" onClick={claimReward} disabled={claiming}>
+                  {claiming ? <LoaderCircle className="animate-spin" /> : null}
+                  Claim {eligibleReward} CRC reward
+                </Button>
+              </CardContent>
+            </Card>
+          ) : session.score.overall < rewardConfig.minScore ? (
+            <p className="rounded-xl border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              Score {session.score.overall}/{rewardConfig.minScore} needed to earn CRC rewards.
+            </p>
+          ) : !address ? (
+            <p className="rounded-xl border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              Connect your Circles wallet to claim your CRC reward.
+            </p>
           ) : null}
 
           {locked ? (

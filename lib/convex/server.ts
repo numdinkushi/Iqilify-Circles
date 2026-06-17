@@ -47,10 +47,20 @@ export async function convexUpdateSession(args: {
   areasForImprovement?: string[]
   recommendation?: string
   debriefUnlocked?: boolean
+  rewardClaimed?: boolean
+  rewardTxHash?: string
+  rewardAmountCrc?: number
+  walletAddress?: string
 }) {
   const convex = getConvexServerClient()
   if (!convex) return null
   return convex.mutation(api.sessions.update, args)
+}
+
+export async function convexGetSession(sessionId: string) {
+  const convex = getConvexServerClient()
+  if (!convex) return null
+  return convex.query(api.sessions.getBySessionId, { sessionId })
 }
 
 export async function convexHealthCheck() {
