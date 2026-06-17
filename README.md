@@ -1,21 +1,53 @@
-# Next.js template
+# IQlify
 
-This is a Next.js template with shadcn/ui.
+AI interview prep mini-app for [circles/garage](https://garage.aboutcircles.com/). Ported from the [IQlify](https://iqlify.vercel.app) concept — **native CRC on Circles**, not Celo.
 
-## Adding components
+## What it does
 
-To add components to your app, run the following command:
+- **CompetentIQ** — technical interview practice
+- **ReflectIQ** — behavioral interview practice
+- **BuilderIQ** — Circles/garage builder interview prep
+- **CRC wallet** — view balance via Circles profile RPC
+- **Leaderboard** — unlock full debrief with 2 CRC to post your score
+- **Referrals** — invite friends to practice inside Circles
+
+## Stack
+
+- Next.js 16 + shadcn/ui (preset `b0`)
+- `@aboutcircles/miniapp-sdk` — wallet, account creation, transactions
+- `@aboutcircles/sdk` — profiles, balances
+- `@aboutcircles/sdk-transfers` — pathfinding CRC payments
+
+## Develop
 
 ```bash
-npx shadcn@latest add button
+cd iqlify
+npm install
+cp .env.example .env.local
+npm run dev
 ```
 
-This will place the ui components in the `components` directory.
+Open [http://localhost:3000](http://localhost:3000).
 
-## Using components
+Test inside the Circles host: [playground](https://circles.gnosis.io/playground?url=YOUR_DEPLOY_URL)
 
-To use the components in your app, import them as follows:
+## Environment
 
-```tsx
-import { Button } from "@/components/ui/button";
+```bash
+# Org/recipient address that receives CRC debrief payments
+NEXT_PUBLIC_IQLIFY_ORG_ADDRESS=0xYourCirclesOrgAddress
 ```
+
+## Garage submission
+
+1. [Sign up](https://garage.aboutcircles.com/signup)
+2. Deploy to Vercel
+3. [Register mini-app](https://garage.aboutcircles.com/register) with live URL
+4. Optional: PR to `aboutcircles/CirclesMiniapps` `static/miniapps.json`
+
+## Circles primitives used
+
+- `requestCreateAccount()` — onboarding + referrals
+- `onWalletChange()` — wallet lifecycle
+- `getProfileView()` — identity + CRC balance
+- `constructAdvancedTransfer()` + annotated transfer data — debrief unlock payments
