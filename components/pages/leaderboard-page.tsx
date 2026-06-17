@@ -2,6 +2,7 @@
 
 import * as React from "react"
 
+import { ProfileAvatar } from "@/components/profile/profile-avatar"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useConvexLeaderboard } from "@/lib/convex/client"
@@ -24,6 +25,7 @@ export function LeaderboardPage() {
           id: row._id,
           address: row.address,
           displayName: row.displayName,
+          avatarUrl: row.avatarUrl,
           track: row.track,
           score: row.score,
           sessionId: row.sessionId,
@@ -59,6 +61,12 @@ export function LeaderboardPage() {
                   <span className="w-6 text-sm font-semibold text-muted-foreground">
                     {index + 1}
                   </span>
+                  <ProfileAvatar
+                    name={entry.displayName}
+                    address={entry.address}
+                    avatarUrl={entry.avatarUrl}
+                    size="sm"
+                  />
                   <div>
                     <p className="text-sm font-medium">{entry.displayName}</p>
                     <p className="text-xs text-muted-foreground">

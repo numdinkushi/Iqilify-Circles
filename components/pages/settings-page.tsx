@@ -1,24 +1,23 @@
 "use client"
 
 import * as React from "react"
-import { useQuery } from "convex/react"
 
-import { isConvexConfigured } from "@/components/providers/convex-provider"
-import { Badge } from "@/components/ui/badge"
+import { AvatarUpload } from "@/components/profile/avatar-upload"
+import { DisplayNameField } from "@/components/profile/display-name-field"
+import { QuestPanel } from "@/components/quests/quest-panel"
+import { ShareKit } from "@/components/share/share-kit"
+import { TimelinePanel } from "@/components/progress/timeline-panel"
+import { useWallet } from "@/components/wallet/wallet-provider"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { api } from "@/convex/_generated/api"
 import { TRACK_META } from "@/lib/interview/prompts"
 import type { InterviewTrack } from "@/lib/interview/types"
 
 const DEFAULT_TRACK_KEY = "iqlify:default-track"
 
 export function SettingsPage() {
+  const { address, referralSecret } = useWallet()
   const [track, setTrack] = React.useState<InterviewTrack>("builder")
-  const convexHealth = useQuery(
-    api.sessions.health,
-    isConvexConfigured() ? {} : "skip"
-  )
 
   React.useEffect(() => {
     const saved = window.localStorage.getItem(DEFAULT_TRACK_KEY) as InterviewTrack | null
@@ -32,6 +31,27 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-4">
+      {address ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Profile</CardTitle>
+            <CardDescription>
+              Custom avatar and display name appear on the leaderboard and duel links.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <AvatarUpload address={address} />
+            <DisplayNameField address={address} />
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-dashed">
+          <CardContent className="pt-6 text-sm text-muted-foreground">
+            Connect your Circles wallet to customize your IQlify profile.
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Settings</CardTitle>
@@ -56,33 +76,9 @@ export function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card className="border-dashed">
-        <CardContent className="space-y-2 pt-6 text-sm text-muted-foreground">
-          <p className="flex items-center gap-2">
-            Convex backend:{" "}
-            {convexHealth?.ok ? (
-              <Badge variant="secondary">Connected</Badge>
-            ) : (
-              <Badge variant="outline">Not connected</Badge>
-            )}
-          </p>
-          {process.env.NEXT_PUBLIC_CONVEX_URL ? (
-            <p className="break-all font-mono text-xs">{process.env.NEXT_PUBLIC_CONVEX_URL}</p>
-          ) : null}
-          <p>
-            Built for circles/garage. Submissions need a live URL — test in the{" "}
-            <a
-              href="https://circles.gnosis.io/playground"
-              className="underline"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Circles playground
-            </a>
-            .
-          </p>
-        </CardContent>
-      </Card>
+      {address ? <QuestPanel /> : null}
+      {address ? <TimelinePanel /> : null}
+      <ShareKit referralSecret={referralSecret} track={track} />
     </div>
   )
 }

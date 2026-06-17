@@ -4,6 +4,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Home, Mic, Settings, Trophy, Wallet } from "lucide-react"
 
+import { ProfileAvatar } from "@/components/profile/profile-avatar"
+import { useProfile } from "@/hooks/use-profile"
 import { useWallet } from "@/components/wallet/wallet-provider"
 import { cn, shortenAddress } from "@/lib/utils"
 
@@ -18,6 +20,7 @@ const NAV = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { address, isConnected, isMiniappHost } = useWallet()
+  const { profile } = useProfile(address)
 
   return (
     <div className="mx-auto flex min-h-svh w-full max-w-lg flex-col">
@@ -27,11 +30,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <p className="text-lg font-semibold tracking-tight">IQlify</p>
             <p className="text-xs text-muted-foreground">Practice interviews · pay in CRC</p>
           </div>
-          <div className="text-right text-xs">
+          <div className="flex items-center gap-2 text-right text-xs">
             {isConnected ? (
-              <span className="rounded-full border px-2 py-1 font-mono">
-                {shortenAddress(address!)}
-              </span>
+              <>
+                <ProfileAvatar
+                  name={profile?.displayName}
+                  address={address!}
+                  avatarUrl={profile?.avatarUrl}
+                  size="sm"
+                />
+                <span className="rounded-full border px-2 py-1 font-mono">
+                  {shortenAddress(address!)}
+                </span>
+              </>
             ) : (
               <span className="text-muted-foreground">
                 {isMiniappHost ? "Not connected" : "Standalone"}

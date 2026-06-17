@@ -50,10 +50,23 @@ export default defineSchema({
     sessionId: v.string(),
     address: v.string(),
     displayName: v.string(),
+    avatarUrl: v.optional(v.string()),
     track: v.union(v.literal("technical"), v.literal("behavioral"), v.literal("builder")),
     score: v.number(),
     createdAt: v.number(),
   })
     .index("by_score", ["score"])
     .index("by_session", ["sessionId"]),
+
+  profiles: defineTable({
+    address: v.string(),
+    displayName: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_address", ["address"]),
+
+  appStats: defineTable({
+    key: v.string(),
+    value: v.number(),
+  }).index("by_key", ["key"]),
 })
