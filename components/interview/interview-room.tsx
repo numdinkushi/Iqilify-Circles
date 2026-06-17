@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { DEBRIEF_COST_CRC, TRACK_META } from "@/lib/interview/prompts"
+import { shortenAddress } from "@/lib/referrals"
 import { isVapiCallsEnabled } from "@/lib/vapi/feature-flags"
 import { saveSession } from "@/lib/interview/storage"
 import type { InterviewTrack, SkillLevel } from "@/lib/interview/types"
@@ -26,24 +27,19 @@ const SKILL_LEVELS: { value: SkillLevel; label: string }[] = [
 
 export function InterviewRoom() {
   const router = useRouter()
-  const { address, isConnected, isMiniappHost } = useWallet()
+  const { address, isConnected, isMiniappHost, referralInviter, referralSecret } = useWallet()
   const [track, setTrack] = React.useState<InterviewTrack>("builder")
   const [role, setRole] = React.useState("Circles mini-app builder")
   const [company, setCompany] = React.useState("circles/garage")
   const [duration, setDuration] = React.useState<number>(10)
   const [skillLevel, setSkillLevel] = React.useState<SkillLevel>("intermediate")
   const [loading, setLoading] = React.useState(false)
-  const [referrer, setReferrer] = React.useState<string | null>(null)
 
   const canStart = isConnected || !isMiniappHost
 
   React.useEffect(() => {
     const saved = window.localStorage.getItem("iqlify:default-track") as InterviewTrack | null
     if (saved && saved in TRACK_META) setTrack(saved)
-
-    const params = new URLSearchParams(window.location.search)
-    const ref = params.get("ref")
-    if (ref) setReferrer(ref)
   }, [])
 
   async function startInterview() {
@@ -99,11 +95,28 @@ export function InterviewRoom() {
         </CardHeader>
       </Card>
 
+      {referralSecret ? (
+        <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-muted-foreground">
+          {referralInviter ? (
+            <>
+              Invited by <span className="font-mono">{shortenAddress(referralInviter)}</span>.
+            </>
+          ) : (
+            <>You have a Circles referral invite.</>
+          )}{" "}
+          {isConnected
+            ? "Complete a session after connecting your new wallet."
+            : "Create your Circles account below to claim the invite."}
+        </p>
+      ) : null}
+
       {isMiniappHost && !isConnected ? (
         <Card>
           <CardContent className="flex flex-col gap-3 pt-6">
             <p className="text-sm text-muted-foreground">
-              Connect your Circles account to bind sessions to your wallet.
+              {referralSecret
+                ? "Claim your referral by creating a Circles account inside the host."
+                : "Connect your Circles account to bind sessions to your wallet."}
             </p>
             <CreateAccountButton />
           </CardContent>
@@ -111,12 +124,7 @@ export function InterviewRoom() {
       ) : !isMiniappHost ? (
         <p className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
           Standalone mode — interviews work without a wallet. Open inside Circles to enable CRC
-          debrief payments.
-        </p>
-      ) : referrer ? (
-        <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-muted-foreground">
-          Invited by <span className="font-mono">{referrer}</span> — complete a session to count
-          toward referrals.
+          debrief payments and referrals.
         </p>
       ) : null}
 

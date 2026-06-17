@@ -18,6 +18,8 @@
     "@aboutcircles/sdk": "^0.1.50",
     "@aboutcircles/sdk-core": "^0.1.50",
     "@aboutcircles/sdk-transfers": "^0.1.50",
+    "@aboutcircles/sdk-invitations": "^0.1.50",
+    "@aboutcircles/sdk-runner": "^0.1.50",
     "@aboutcircles/sdk-utils": "^0.1.50",
     "@google/generative-ai": "^0.24.1",
     "@vapi-ai/web": "^2.5.2",

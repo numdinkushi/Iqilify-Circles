@@ -2,14 +2,21 @@
 
 import { useEffect, useRef, useState } from "react"
 import { LoaderCircle } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { useWallet } from "@/components/wallet/wallet-provider"
 
 type MiniappSdk = typeof import("@aboutcircles/miniapp-sdk")
 
-export function CreateAccountButton({ label = "Connect Circles account" }: { label?: string }) {
-  const { isConnected, isMiniappHost } = useWallet()
+export function CreateAccountButton({
+  label = "Connect Circles account",
+  referralLabel = "Create account & claim invite",
+}: {
+  label?: string
+  referralLabel?: string
+}) {
+  const { isConnected, isMiniappHost, referralSecret } = useWallet()
   const sdkRef = useRef<MiniappSdk | null>(null)
   const [ready, setReady] = useState(false)
   const [pending, setPending] = useState(false)
@@ -32,6 +39,11 @@ export function CreateAccountButton({ label = "Connect Circles account" }: { lab
     setPending(true)
     try {
       await sdk.requestCreateAccount()
+      if (referralSecret) {
+        toast.success("Circles account connected — welcome to IQlify")
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Account setup cancelled")
     } finally {
       setPending(false)
     }
@@ -45,6 +57,8 @@ export function CreateAccountButton({ label = "Connect Circles account" }: { lab
     )
   }
 
+  const buttonLabel = referralSecret && !isConnected ? referralLabel : isConnected ? "Switch account" : label
+
   return (
     <Button onClick={handleClick} disabled={!ready || pending}>
       {pending ? (
@@ -52,10 +66,8 @@ export function CreateAccountButton({ label = "Connect Circles account" }: { lab
           <LoaderCircle className="animate-spin" />
           Waiting for host…
         </>
-      ) : isConnected ? (
-        "Switch account"
       ) : (
-        label
+        buttonLabel
       )}
     </Button>
   )

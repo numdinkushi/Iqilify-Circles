@@ -49,3 +49,7 @@ export const QUESTION_BANK: Record<InterviewTrack, string[]> = {
 }
 
 export const DEBRIEF_COST_CRC = 2
+
+/** Default reward tiers — override via NEXT_PUBLIC_REWARD_* env vars. */
+export const DEFAULT_REWARD_MIN_SCORE = 70
+export const DEFAULT_REWARD_CRC = 3
