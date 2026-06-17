@@ -52,11 +52,22 @@ export function listenOnce(timeoutMs = 15000): Promise<string> {
     }
 
     let finished = false
-    const timeout = setTimeout(() => {
+
+    function finish(result: { ok: true; value: string } | { ok: false; error: Error }) {
       if (finished) return
       finished = true
-      recognition.stop()
-      reject(new Error("Did not hear a response. Try speaking again."))
+      clearTimeout(timeout)
+      try {
+        recognition.stop()
+      } catch {
+        // already stopped
+      }
+      if (result.ok) resolve(result.value)
+      else reject(result.error)
+    }
+
+    const timeout = setTimeout(() => {
+      finish({ ok: false, error: new Error("Did not hear a response. Try speaking again.") })
     }, timeoutMs)
 
     recognition.continuous = false
@@ -65,26 +76,37 @@ export function listenOnce(timeoutMs = 15000): Promise<string> {
     recognition.maxAlternatives = 1
 
     recognition.onresult = (event) => {
-      if (finished) return
-      finished = true
-      clearTimeout(timeout)
       const transcript = event.results[0]?.[0]?.transcript?.trim() || ""
-      recognition.stop()
-      resolve(transcript)
+      finish({ ok: true, value: transcript })
     }
 
     recognition.onerror = (event) => {
-      if (finished) return
-      finished = true
-      clearTimeout(timeout)
-      recognition.stop()
-      reject(new Error(event.error === "not-allowed" ? "Microphone permission denied" : event.error))
+      if (event.error === "no-speech" || event.error === "aborted") {
+        finish({ ok: true, value: "" })
+        return
+      }
+      finish({
+        ok: false,
+        error: new Error(
+          event.error === "not-allowed" ? "Microphone permission denied" : event.error,
+        ),
+      })
     }
 
     recognition.onend = () => {
-      clearTimeout(timeout)
+      // Chrome often ends without onresult/onerror — must not leave the promise hanging.
+      if (!finished) {
+        finish({ ok: true, value: "" })
+      }
     }
 
-    recognition.start()
+    try {
+      recognition.start()
+    } catch (error) {
+      finish({
+        ok: false,
+        error: error instanceof Error ? error : new Error("Could not start speech recognition"),
+      })
+    }
   })
 }

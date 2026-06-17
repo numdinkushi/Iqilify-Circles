@@ -121,7 +121,10 @@ export function BrowserVoiceInterface({
 
         setStatus("listening")
         const answer = await listenOnce(20000)
-        if (!answer.trim()) continue
+        if (!answer.trim()) {
+          toast.message("No speech detected — trying again")
+          continue
+        }
 
         currentMessages = [...currentMessages, { role: "candidate", content: answer }]
         messagesRef.current = currentMessages
