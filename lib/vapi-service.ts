@@ -2,13 +2,14 @@ import { parseVapiError } from "@/lib/vapi/parse-error"
 
 export interface VapiCallConfig {
   assistantId: string
+  sessionId?: string
   duration?: number
   role?: string
   company?: string
   track?: string
   skillLevel?: string
   onCallStart?: (callId?: string) => void
-  onCallEnd?: () => void
+  onCallEnd?: (callId?: string) => void
   onError?: (error: unknown) => void
   onMessage?: (message: unknown) => void
 }
@@ -19,6 +20,8 @@ export class VapiService {
   private static instance: VapiService
   private currentCall: VapiInstance | null = null
   private activeCallId: string | null = null
+  /** Persists after hangup so grading can still read the call id. */
+  private lastCallId: string | null = null
 
   private constructor() {}
 
@@ -45,6 +48,7 @@ export class VapiService {
       }
       this.currentCall = null
       this.activeCallId = null
+      this.lastCallId = null
     }
 
     const Vapi = (await import("@vapi-ai/web")).default
@@ -57,6 +61,7 @@ export class VapiService {
     this.currentCall.on("call-start-success", (event: { callId?: string }) => {
       if (event.callId) {
         this.activeCallId = event.callId
+        this.lastCallId = event.callId
         config.onCallStart?.(event.callId)
       }
     })
@@ -67,7 +72,7 @@ export class VapiService {
 
     this.currentCall.on("call-end", () => {
       this.activeCallId = null
-      config.onCallEnd?.()
+      config.onCallEnd?.(this.lastCallId ?? undefined)
     })
 
     this.currentCall.on("error", (error: unknown) => {
@@ -94,6 +99,7 @@ export class VapiService {
     const assistantOverrides: Record<string, unknown> = {
       firstMessage: `Hi! I'm your interviewer today for the ${config.role || "role"} position${config.company ? ` at ${config.company}` : ""}. Tell me a bit about yourself to get started.`,
       metadata: {
+        sessionId: config.sessionId,
         role: config.role,
         company: config.company,
         track: config.track,
@@ -109,6 +115,7 @@ export class VapiService {
       const call = await this.currentCall.start(config.assistantId, assistantOverrides)
       if (call?.id) {
         this.activeCallId = call.id
+        this.lastCallId = call.id
       }
       return call
     } catch (error) {
@@ -134,6 +141,10 @@ export class VapiService {
 
   getActiveCallId() {
     return this.activeCallId
+  }
+
+  getCallIdForGrading() {
+    return this.lastCallId || this.activeCallId
   }
 
   isCallActive() {

@@ -95,3 +95,11 @@ export function resolveMessages(input: {
   if (input.transcript?.trim()) return parseTranscript(input.transcript)
   return []
 }
+
+export function formatMessagesAsTranscript(messages: InterviewMessage[]): string {
+  return messages
+    .map((message) =>
+      `${message.role === "interviewer" ? "Interviewer" : "Candidate"}: ${message.content}`,
+    )
+    .join("\n")
+}

@@ -23,7 +23,14 @@ export function GradingScreen({ session }: { session: InterviewSession }) {
   const [recommendation, setRecommendation] = React.useState(session.recommendation ?? "maybe")
 
   React.useEffect(() => {
-    if (session.completed && session.score) {
+    const current = loadSession(session.id) || session
+    const needsRegrade =
+      current.completed &&
+      current.voiceMode === "vapi" &&
+      (current.score?.overall === 0 || current.recommendation === "retry") &&
+      !current.localTranscript
+
+    if (current.completed && current.score && !needsRegrade) {
       setIsGrading(false)
       return
     }
@@ -31,20 +38,23 @@ export function GradingScreen({ session }: { session: InterviewSession }) {
     let cancelled = false
 
     async function grade() {
-      const current = loadSession(session.id) || session
+      const latest = loadSession(session.id) || session
 
       try {
         const res = await fetch("/api/interview/grade", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            sessionId: current.id,
-            track: current.track,
-            role: current.role,
-            skillLevel: current.skillLevel,
-            duration: current.duration,
-            messages: current.messages,
-            transcript: current.localTranscript,
+            sessionId: latest.id,
+            vapiCallId: latest.vapiCallId,
+            voiceMode: latest.voiceMode,
+            track: latest.track,
+            role: latest.role,
+            skillLevel: latest.skillLevel,
+            duration: latest.duration,
+            createdAt: latest.createdAt,
+            messages: latest.messages,
+            transcript: latest.localTranscript,
           }),
         })
 
@@ -56,7 +66,7 @@ export function GradingScreen({ session }: { session: InterviewSession }) {
         if (cancelled) return
 
         const completed: InterviewSession = {
-          ...current,
+          ...latest,
           status: "completed",
           completed: true,
           score: data.score,
@@ -64,6 +74,8 @@ export function GradingScreen({ session }: { session: InterviewSession }) {
           strengths: data.strengths,
           areasForImprovement: data.areasForImprovement,
           recommendation: data.recommendation,
+          localTranscript: data.transcript || latest.localTranscript,
+          vapiCallId: data.vapiCallId || latest.vapiCallId,
         }
 
         saveSession(completed)
@@ -75,7 +87,7 @@ export function GradingScreen({ session }: { session: InterviewSession }) {
         setImprovements(data.areasForImprovement)
         setRecommendation(data.recommendation)
         setIsGrading(false)
-        router.replace(`/interview/${current.id}`)
+        router.replace(`/interview/${latest.id}`)
       } catch (err) {
         if (cancelled) return
         setError(err instanceof Error ? err.message : "Grading failed")
@@ -97,7 +109,11 @@ export function GradingScreen({ session }: { session: InterviewSession }) {
           <LoaderCircle className="size-10 animate-spin text-emerald-600" />
           <div>
             <p className="font-medium">Grading your interview</p>
-            <p className="text-sm text-muted-foreground">Scoring your answers…</p>
+            <p className="text-sm text-muted-foreground">
+              {session.vapiCallId
+                ? "Pulling Vapi call logs and analyzing with AI…"
+                : "Scoring your answers…"}
+            </p>
           </div>
         </CardContent>
       </Card>
