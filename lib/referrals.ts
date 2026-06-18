@@ -120,7 +120,28 @@ export type ReferralStats = {
   total: number
 }
 
-export async function getReferralStats(inviter: Address): Promise<ReferralStats> {
+const EMPTY_REFERRAL_STATS: ReferralStats = { claimed: 0, pending: 0, total: 0 }
+const REFERRAL_STATS_TTL_MS = 5 * 60 * 1000
+
+type CachedReferralStats = {
+  data: ReferralStats
+  fetchedAt: number
+}
+
+const referralStatsCache = new Map<string, CachedReferralStats>()
+const referralStatsInflight = new Map<string, Promise<ReferralStats>>()
+
+export function invalidateReferralStatsCache(inviter?: Address) {
+  if (inviter) {
+    referralStatsCache.delete(inviter.toLowerCase())
+    referralStatsInflight.delete(inviter.toLowerCase())
+    return
+  }
+  referralStatsCache.clear()
+  referralStatsInflight.clear()
+}
+
+async function fetchReferralStatsFromService(inviter: Address): Promise<ReferralStats> {
   const invitations = await getInvitationsClient()
   const { referrals, total } = await invitations.listReferrals(inviter, 50, 0)
   const claimed = referrals.filter((r) => r.status === "claimed").length
@@ -128,6 +149,40 @@ export async function getReferralStats(inviter: Address): Promise<ReferralStats>
     (r) => r.status === "pending" || r.status === "confirmed" || r.status === "stale",
   ).length
   return { claimed, pending, total }
+}
+
+/** Referral list from the Circles service — 404 is normal when none exist yet. */
+export async function getReferralStats(inviter: Address): Promise<ReferralStats> {
+  const key = inviter.toLowerCase()
+  const cached = referralStatsCache.get(key)
+  if (cached && Date.now() - cached.fetchedAt < REFERRAL_STATS_TTL_MS) {
+    return cached.data
+  }
+
+  const inflight = referralStatsInflight.get(key)
+  if (inflight) return inflight
+
+  const request = fetchReferralStatsFromService(inviter)
+    .then((data) => {
+      referralStatsCache.set(key, { data, fetchedAt: Date.now() })
+      return data
+    })
+    .catch((error: unknown) => {
+      // No referrals indexed yet → service returns 404. Treat as empty, don't spam retries.
+      const message = error instanceof Error ? error.message : String(error)
+      const isNotFound = /404|not found/i.test(message)
+      if (!isNotFound) {
+        console.warn("[referrals] Could not load referral stats:", message)
+      }
+      referralStatsCache.set(key, { data: EMPTY_REFERRAL_STATS, fetchedAt: Date.now() })
+      return EMPTY_REFERRAL_STATS
+    })
+    .finally(() => {
+      referralStatsInflight.delete(key)
+    })
+
+  referralStatsInflight.set(key, request)
+  return request
 }
 
 export function shortenAddress(value: string): string {

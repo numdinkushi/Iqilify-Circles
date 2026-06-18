@@ -5,19 +5,27 @@ import { Copy, LoaderCircle, Trophy } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 
+import { DuelResultCard } from "@/components/duel/duel-result"
+import { ProfileAvatar } from "@/components/profile/profile-avatar"
 import { useWallet } from "@/components/wallet/wallet-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { useBumpStat } from "@/hooks/use-bump-stat"
+import { useDuelChallenge } from "@/hooks/use-duel-challenge"
+import { useProfile } from "@/hooks/use-profile"
+import { useQuests } from "@/hooks/use-quests"
+import { SessionLoading, useClientSession } from "@/hooks/use-client-session"
+import { useAddLeaderboardToConvex, useSyncSessionToConvex } from "@/lib/convex/client"
 import { getSdk, payForDebrief } from "@/lib/circles"
-import { buildReferralShareUrl, createReferralLink } from "@/lib/referrals"
+import { buildReferralShareUrl, createReferralLink, invalidateReferralStatsCache } from "@/lib/referrals"
 import { DEBRIEF_COST_CRC, TRACK_META } from "@/lib/interview/prompts"
 import { getRewardConfig, isRewardEligible, rewardAmountForScore } from "@/lib/rewards"
 import { buildFeedback } from "@/lib/interview/scoring"
-import { SessionLoading, useClientSession } from "@/hooks/use-client-session"
-import { useAddLeaderboardToConvex, useSyncSessionToConvex } from "@/lib/convex/client"
 import { addLeaderboardEntry, saveSession } from "@/lib/interview/storage"
+import { recordTimelineEvent } from "@/lib/timeline/storage"
+import { markQuestFlag } from "@/lib/quests/evaluate"
 import type { InterviewSession } from "@/lib/interview/types"
 
 const ORG_ADDRESS = process.env.NEXT_PUBLIC_IQLIFY_ORG_ADDRESS
@@ -27,10 +35,15 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
   const { session, ready, setSession } = useClientSession(sessionId)
   const { syncSession } = useSyncSessionToConvex()
   const addToConvexLeaderboard = useAddLeaderboardToConvex()
+  const { profile, saveProfile } = useProfile(address)
+  const { challenge: duelChallenge, clear: clearDuel } = useDuelChallenge()
+  const { refresh: refreshQuests, markDone } = useQuests()
+  const bumpStat = useBumpStat()
   const [paying, setPaying] = React.useState(false)
   const [claiming, setClaiming] = React.useState(false)
   const [inviting, setInviting] = React.useState(false)
   const [displayName, setDisplayName] = React.useState("Anonymous builder")
+  const [timelineLogged, setTimelineLogged] = React.useState(false)
 
   const rewardConfig = getRewardConfig()
   const eligibleReward = session?.score ? rewardAmountForScore(session.score.overall) : 0
@@ -46,10 +59,30 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
       .then((sdk) => sdk.rpc.profile.getProfileView(address as `0x${string}`))
       .then((view) => {
         const profileName = view.profile?.name
-        if (profileName) setDisplayName(profileName)
+        if (profileName && !profile?.displayName) {
+          setDisplayName(profileName)
+          void saveProfile({ displayName: profileName }).catch(() => undefined)
+        }
       })
       .catch(() => undefined)
-  }, [address])
+  }, [address, profile?.displayName, saveProfile])
+
+  React.useEffect(() => {
+    if (profile?.displayName) setDisplayName(profile.displayName)
+  }, [profile?.displayName])
+
+  React.useEffect(() => {
+    if (!address || !session?.score || timelineLogged) return
+    recordTimelineEvent(address, {
+      type: "interview_complete",
+      title: "Interview completed",
+      detail: `${TRACK_META[session.track].title} · score ${session.score.overall}`,
+      value: session.score.overall,
+    })
+    bumpStat("interviews_completed")
+    setTimelineLogged(true)
+    refreshQuests()
+  }, [address, session?.score, session?.track, timelineLogged, bumpStat, refreshQuests])
 
   if (!ready) {
     return <SessionLoading />
@@ -99,6 +132,7 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
         id: crypto.randomUUID(),
         address,
         displayName,
+        avatarUrl: profile?.avatarUrl,
         track: session.track,
         score: session.score.overall,
         sessionId: session.id,
@@ -109,11 +143,25 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
         sessionId: session.id,
         address,
         displayName,
+        avatarUrl: profile?.avatarUrl,
         track: session.track,
         score: session.score.overall,
       })
 
+      recordTimelineEvent(address, {
+        type: "leaderboard_joined",
+        title: "Leaderboard entry posted",
+        detail: `Score ${session.score.overall} is now public.`,
+        value: session.score.overall,
+      })
+      recordTimelineEvent(address, {
+        type: "debrief_unlocked",
+        title: "Full debrief unlocked",
+        detail: `Paid ${DEBRIEF_COST_CRC} CRC for AI feedback.`,
+      })
+
       toast.success("Full debrief unlocked — you are on the leaderboard")
+      refreshQuests()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Payment failed")
     } finally {
@@ -150,9 +198,17 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
       saveSession(next)
       void syncSession(next)
 
+      recordTimelineEvent(address, {
+        type: "reward_claimed",
+        title: "CRC reward claimed",
+        detail: `Received ${data.amountCrc} CRC in your wallet.`,
+        value: data.amountCrc,
+      })
+
       toast.success(`You earned ${data.amountCrc} CRC!`, {
         description: data.explorerUrl ? "Reward sent on Gnosis Chain" : undefined,
       })
+      refreshQuests()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Reward claim failed")
     } finally {
@@ -175,7 +231,17 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
       const secret = await createReferralLink(address as `0x${string}`)
       const url = buildReferralShareUrl(secret)
       await navigator.clipboard.writeText(url)
+      invalidateReferralStatsCache(address as `0x${string}`)
+      markQuestFlag(address, "referral_link")
+      markDone("referral_link")
+      bumpStat("referrals_copied")
+      recordTimelineEvent(address, {
+        type: "referral_sent",
+        title: "Referral link copied",
+        detail: "Invite a friend to practice on Circles.",
+      })
       toast.success("Invite link copied — friend opens it in Circles to create a wallet")
+      refreshQuests()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create invite")
     } finally {
@@ -191,7 +257,15 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
             <Trophy className="size-4 text-emerald-600" />
             Interview complete
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="flex items-center gap-2">
+            {address ? (
+              <ProfileAvatar
+                name={displayName}
+                address={address}
+                avatarUrl={profile?.avatarUrl}
+                size="sm"
+              />
+            ) : null}
             {TRACK_META[session.track].title} · {session.role}
           </CardDescription>
         </CardHeader>
@@ -229,6 +303,21 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
                 ))}
               </ul>
             </div>
+          ) : null}
+
+          {address ? (
+            <DuelResultCard
+              challenge={duelChallenge}
+              yourScore={session.score.overall}
+              track={session.track}
+              displayName={displayName}
+              challengerAddress={address}
+              sessionId={session.id}
+              onChallengeSent={() => {
+                clearDuel()
+                refreshQuests()
+              }}
+            />
           ) : null}
 
           {session.rewardClaimed ? (

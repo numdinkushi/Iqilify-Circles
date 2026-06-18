@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getSdk, buildTreasuryFundPreview, fundOrgTreasury } from "@/lib/circles"
-import { shortenAddress, buildReferralShareUrl, createReferralLink, getReferralStats, inviteExistingSafe } from "@/lib/referrals"
+import { shortenAddress, buildReferralShareUrl, createReferralLink, getReferralStats, invalidateReferralStatsCache, inviteExistingSafe } from "@/lib/referrals"
 import {
   Dialog,
   DialogContent,
@@ -65,8 +65,9 @@ export function WalletPage() {
     }
   }
 
-  async function loadReferralStats() {
+  async function loadReferralStats(force = false) {
     if (!address) return
+    if (force) invalidateReferralStatsCache(address as `0x${string}`)
     try {
       const stats = await getReferralStats(address as `0x${string}`)
       setReferralStats(stats)
@@ -175,8 +176,9 @@ export function WalletPage() {
     try {
       const secret = await createReferralLink(address as `0x${string}`)
       await navigator.clipboard.writeText(buildReferralShareUrl(secret))
+      invalidateReferralStatsCache(address as `0x${string}`)
       toast.success("Referral link copied")
-      await loadReferralStats()
+      await loadReferralStats(true)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create invite")
     } finally {

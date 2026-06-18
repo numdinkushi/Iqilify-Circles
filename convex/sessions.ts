@@ -107,6 +107,7 @@ export const addLeaderboardEntry = mutation({
     sessionId: v.string(),
     address: v.string(),
     displayName: v.string(),
+    avatarUrl: v.optional(v.string()),
     track: v.union(v.literal("technical"), v.literal("behavioral"), v.literal("builder")),
     score: v.number(),
   },
@@ -120,6 +121,7 @@ export const addLeaderboardEntry = mutation({
       await ctx.db.patch(existing._id, {
         score: args.score,
         displayName: args.displayName,
+        ...(args.avatarUrl !== undefined ? { avatarUrl: args.avatarUrl } : {}),
       })
       return existing._id
     }

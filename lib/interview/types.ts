@@ -55,6 +55,7 @@ export type LeaderboardEntry = {
   id: string
   address: string
   displayName: string
+  avatarUrl?: string
   track: InterviewTrack
   score: number
   sessionId: string

@@ -21,6 +21,17 @@ export const metadata: Metadata = {
   title: "IQlify · AI interview prep on Circles",
   description:
     "Master interviews with AI. Practice, get scored, unlock debriefs with CRC on Circles.",
+  openGraph: {
+    title: "IQlify · AI interview prep on Circles",
+    description:
+      "Master interviews with AI. Practice, get scored, earn CRC on Gnosis.",
+    images: [{ url: "/api/og", width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "IQlify · AI interview prep on Circles",
+    images: ["/api/og"],
+  },
 }
 
 export default function RootLayout({

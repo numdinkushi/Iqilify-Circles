@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { CreateAccountButton } from "@/components/wallet/create-account-button"
+import { DuelBanner } from "@/components/duel/duel-banner"
 import { useWallet } from "@/components/wallet/wallet-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,6 +18,7 @@ import { shortenAddress } from "@/lib/referrals"
 import { isVapiCallsEnabled } from "@/lib/vapi/feature-flags"
 import { saveSession } from "@/lib/interview/storage"
 import type { InterviewTrack, SkillLevel } from "@/lib/interview/types"
+import { useDuelChallenge } from "@/hooks/use-duel-challenge"
 
 const DURATIONS = [5, 10, 15] as const
 const SKILL_LEVELS: { value: SkillLevel; label: string }[] = [
@@ -28,6 +30,7 @@ const SKILL_LEVELS: { value: SkillLevel; label: string }[] = [
 export function InterviewRoom() {
   const router = useRouter()
   const { address, isConnected, isMiniappHost, referralInviter, referralSecret } = useWallet()
+  const { challenge: duelChallenge } = useDuelChallenge()
   const [track, setTrack] = React.useState<InterviewTrack>("builder")
   const [role, setRole] = React.useState("Circles mini-app builder")
   const [company, setCompany] = React.useState("circles/garage")
@@ -41,6 +44,10 @@ export function InterviewRoom() {
     const saved = window.localStorage.getItem("iqlify:default-track") as InterviewTrack | null
     if (saved && saved in TRACK_META) setTrack(saved)
   }, [])
+
+  React.useEffect(() => {
+    if (duelChallenge?.track) setTrack(duelChallenge.track)
+  }, [duelChallenge?.track])
 
   async function startInterview() {
     if (!canStart) {
@@ -94,6 +101,8 @@ export function InterviewRoom() {
           </CardDescription>
         </CardHeader>
       </Card>
+
+      {duelChallenge ? <DuelBanner challenge={duelChallenge} /> : null}
 
       {referralSecret ? (
         <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-muted-foreground">

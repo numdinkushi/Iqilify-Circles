@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { listenOnce, speak, stopSpeaking } from "@/lib/interview/browser-voice"
+import { listenOnce, speak, stopListening, stopSpeaking } from "@/lib/interview/browser-voice"
 import { useSyncSessionToConvex } from "@/lib/convex/client"
 import { saveSession } from "@/lib/interview/storage"
 import { TRACK_META } from "@/lib/interview/prompts"
@@ -41,17 +41,29 @@ export function BrowserVoiceInterface({
   const [error, setError] = React.useState<string | null>(null)
   const [hasEnded, setHasEnded] = React.useState(false)
   const timerRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
-  const runningRef = React.useRef(false)
+  const loopCancelledRef = React.useRef(false)
   const messagesRef = React.useRef<InterviewMessage[]>([])
+  const isMutedRef = React.useRef(isMuted)
+  const speakerOnRef = React.useRef(speakerOn)
+  const [loopKey, setLoopKey] = React.useState(0)
+
+  React.useEffect(() => {
+    isMutedRef.current = isMuted
+  }, [isMuted])
+
+  React.useEffect(() => {
+    speakerOnRef.current = speakerOn
+  }, [speakerOn])
 
   const maxTurns = Math.max(4, Math.min(8, Math.floor(session.duration / 2)))
 
   const finishInterview = React.useCallback(
     (finalMessages: InterviewMessage[]) => {
       if (hasEnded) return
+      loopCancelledRef.current = true
       setHasEnded(true)
-      runningRef.current = false
       stopSpeaking()
+      stopListening()
       if (timerRef.current) clearInterval(timerRef.current)
 
       const transcript = buildTranscript(finalMessages)
@@ -93,63 +105,71 @@ export function BrowserVoiceInterface({
     [maxTurns, session]
   )
 
-  const runLoop = React.useCallback(async () => {
-    if (runningRef.current || hasEnded) return
-    runningRef.current = true
-    setStatus("connecting")
-    setError(null)
+  React.useEffect(() => {
+    if (hasEnded) return
 
+    loopCancelledRef.current = false
     let currentMessages: InterviewMessage[] = []
     let index = 0
 
-    try {
-      saveSession({ ...session, status: "in_progress", voiceMode: "browser" })
-      setStatus("connected")
+    async function runLoop() {
+      setStatus("connecting")
+      setError(null)
 
-      while (index < maxTurns && timeRemaining > 0) {
-        const turn = await fetchTurn(currentMessages, index)
-        if (turn.done) break
+      try {
+        saveSession({ ...session, status: "in_progress", voiceMode: "browser" })
+        setStatus("connected")
 
-        const interviewerLine = turn.interviewerMessage as string
-        currentMessages = turn.messages as InterviewMessage[]
-        messagesRef.current = currentMessages
-        setMessages(currentMessages)
-        setTurnIndex(index)
+        while (index < maxTurns && !loopCancelledRef.current) {
+          const turn = await fetchTurn(currentMessages, index)
+          if (loopCancelledRef.current) break
+          if (turn.done) break
 
-        setStatus("speaking")
-        await speak(interviewerLine, speakerOn && !isMuted)
+          const interviewerLine = turn.interviewerMessage as string
+          currentMessages = turn.messages as InterviewMessage[]
+          messagesRef.current = currentMessages
+          setMessages(currentMessages)
+          setTurnIndex(index)
 
-        setStatus("listening")
-        const answer = await listenOnce(20000)
-        if (!answer.trim()) {
-          toast.message("No speech detected — trying again")
-          continue
+          setStatus("speaking")
+          await speak(interviewerLine, speakerOnRef.current && !isMutedRef.current)
+          if (loopCancelledRef.current) break
+
+          setStatus("listening")
+          const answer = await listenOnce(20000)
+          if (loopCancelledRef.current) break
+          if (!answer.trim()) {
+            toast.message("No speech detected — trying again")
+            continue
+          }
+
+          currentMessages = [...currentMessages, { role: "candidate", content: answer }]
+          messagesRef.current = currentMessages
+          setMessages(currentMessages)
+          index += 1
+          setTurnIndex(index)
         }
 
-        currentMessages = [...currentMessages, { role: "candidate", content: answer }]
-        messagesRef.current = currentMessages
-        setMessages(currentMessages)
-        index += 1
-        setTurnIndex(index)
+        if (!loopCancelledRef.current) {
+          finishInterview(currentMessages)
+        }
+      } catch (err) {
+        if (loopCancelledRef.current) return
+        const message = err instanceof Error ? err.message : "Voice interview failed"
+        setError(message)
+        setStatus("error")
+        toast.error(message)
       }
-
-      finishInterview(currentMessages)
-    } catch (err) {
-      runningRef.current = false
-      const message = err instanceof Error ? err.message : "Voice interview failed"
-      setError(message)
-      setStatus("error")
-      toast.error(message)
     }
-  }, [fetchTurn, finishInterview, hasEnded, isMuted, maxTurns, session, speakerOn, timeRemaining])
 
-  React.useEffect(() => {
-    runLoop()
+    void runLoop()
+
     return () => {
+      loopCancelledRef.current = true
       stopSpeaking()
-      if (timerRef.current) clearInterval(timerRef.current)
+      stopListening()
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchTurn, finishInterview, hasEnded, loopKey, maxTurns, session.id])
 
   React.useEffect(() => {
     if (hasEnded) return
@@ -200,7 +220,10 @@ export function BrowserVoiceInterface({
 
           <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border bg-muted/30 p-3">
             {messages.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Starting interview…</p>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <LoaderCircle className="size-4 animate-spin shrink-0" />
+                {status === "connected" ? "Preparing first question…" : "Starting interview…"}
+              </div>
             ) : (
               messages.map((m, i) => (
                 <p key={i} className="text-sm">
@@ -228,8 +251,11 @@ export function BrowserVoiceInterface({
                 size="sm"
                 className="mt-2"
                 onClick={() => {
-                  runningRef.current = false
-                  runLoop()
+                  loopCancelledRef.current = true
+                  stopSpeaking()
+                  stopListening()
+                  setError(null)
+                  setLoopKey((k) => k + 1)
                 }}
               >
                 Retry

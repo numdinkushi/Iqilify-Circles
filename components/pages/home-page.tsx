@@ -4,6 +4,12 @@ import * as React from "react"
 import Link from "next/link"
 import { ArrowRight, Mic, Sparkles, Trophy, Wallet } from "lucide-react"
 
+import { LiveStatsBar } from "@/components/home/live-stats-bar"
+import { PublicWinsFeed } from "@/components/home/public-wins-feed"
+import { ScorePreview } from "@/components/home/score-preview"
+import { TimelinePanel } from "@/components/progress/timeline-panel"
+import { QuestPanel } from "@/components/quests/quest-panel"
+import { ShareKit } from "@/components/share/share-kit"
 import { CreateAccountButton } from "@/components/wallet/create-account-button"
 import { useWallet } from "@/components/wallet/wallet-provider"
 import { Badge } from "@/components/ui/badge"
@@ -30,6 +36,8 @@ export function HomePage() {
           CRC — then optionally unlock your full debrief for {DEBRIEF_COST_CRC} CRC.
         </p>
       </section>
+
+      <LiveStatsBar />
 
       {referralSecret && !isConnected ? (
         <Card className="border-emerald-500/30 bg-emerald-500/5">
@@ -58,6 +66,13 @@ export function HomePage() {
           </CardContent>
         </Card>
       ) : null}
+
+      {!isConnected ? <ScorePreview /> : null}
+
+      <PublicWinsFeed />
+
+      {isConnected ? <QuestPanel /> : null}
+      {isConnected ? <TimelinePanel /> : null}
 
       <div className="grid gap-3">
         {(Object.keys(TRACK_META) as Array<keyof typeof TRACK_META>).map((key) => {
@@ -110,6 +125,8 @@ export function HomePage() {
           View leaderboard
         </Link>
       </Button>
+
+      <ShareKit referralSecret={referralSecret} compact />
     </div>
   )
 }

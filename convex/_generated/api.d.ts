@@ -8,7 +8,9 @@
  * @module
  */
 
+import type * as profiles from "../profiles.js";
 import type * as sessions from "../sessions.js";
+import type * as stats from "../stats.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +19,9 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  profiles: typeof profiles;
   sessions: typeof sessions;
+  stats: typeof stats;
 }>;
 
 /**
