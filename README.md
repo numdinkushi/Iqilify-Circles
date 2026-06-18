@@ -40,10 +40,14 @@ NEXT_PUBLIC_IQLIFY_ORG_ADDRESS=0xYourCirclesOrgAddress
 
 ## Garage submission
 
+Live app: [iqilify-circles.vercel.app](https://iqilify-circles.vercel.app/)
+
 1. [Sign up](https://garage.aboutcircles.com/signup)
-2. Deploy to Vercel
-3. [Register mini-app](https://garage.aboutcircles.com/register) with live URL
-4. Optional: PR to `aboutcircles/CirclesMiniapps` `static/miniapps.json`
+2. Deploy to Vercel — set `NEXT_PUBLIC_APP_URL=https://iqilify-circles.vercel.app` in Vercel env vars (fixes OG/social previews)
+3. [Register mini-app](https://garage.aboutcircles.com/register) with the live URL
+4. Optional: PR to [`aboutcircles/CirclesMiniapps`](https://github.com/aboutcircles/CirclesMiniapps) — copy the entry from [`garage/miniapps-entry.json`](garage/miniapps-entry.json) into `static/miniapps.json`
+
+**Voice in Circles:** Wallet and CRC flows work in the [playground](https://circles.gnosis.io/playground?url=https://iqilify-circles.vercel.app/). Voice interviews need a direct tab until the Circles host adds `microphone` to its iframe `allow` attribute.
 
 ## Circles primitives used
 

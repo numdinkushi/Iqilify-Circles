@@ -9,7 +9,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { VoiceEmbedNotice } from "@/components/interview/voice-embed-notice"
+import { isEmbeddedFrame } from "@/lib/embed/microphone"
 import { listenOnce, speak, stopListening, stopSpeaking } from "@/lib/interview/browser-voice"
+import { isMicPermissionError } from "@/lib/vapi/parse-error"
 import { useSyncSessionToConvex } from "@/lib/convex/client"
 import { saveSession } from "@/lib/interview/storage"
 import { TRACK_META } from "@/lib/interview/prompts"
@@ -46,6 +49,11 @@ export function BrowserVoiceInterface({
   const isMutedRef = React.useRef(isMuted)
   const speakerOnRef = React.useRef(speakerOn)
   const [loopKey, setLoopKey] = React.useState(0)
+  const [voiceBlockedInEmbed, setVoiceBlockedInEmbed] = React.useState(false)
+
+  React.useEffect(() => {
+    setVoiceBlockedInEmbed(isEmbeddedFrame())
+  }, [])
 
   React.useEffect(() => {
     isMutedRef.current = isMuted
@@ -244,22 +252,27 @@ export function BrowserVoiceInterface({
           ) : null}
 
           {error ? (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-              {error}
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-2"
-                onClick={() => {
-                  loopCancelledRef.current = true
-                  stopSpeaking()
-                  stopListening()
-                  setError(null)
-                  setLoopKey((k) => k + 1)
-                }}
-              >
-                Retry
-              </Button>
+            <div className="space-y-3">
+              <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                {error}
+                {!(voiceBlockedInEmbed && isMicPermissionError(error)) ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => {
+                      loopCancelledRef.current = true
+                      stopSpeaking()
+                      stopListening()
+                      setError(null)
+                      setLoopKey((k) => k + 1)
+                    }}
+                  >
+                    Retry
+                  </Button>
+                ) : null}
+              </div>
+              {voiceBlockedInEmbed && isMicPermissionError(error) ? <VoiceEmbedNotice /> : null}
             </div>
           ) : null}
 
