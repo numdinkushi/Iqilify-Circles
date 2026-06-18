@@ -8,7 +8,10 @@ type SpeechRecognitionInstance = {
   onend: (() => void) | null
   start: () => void
   stop: () => void
+  abort?: () => void
 }
+
+let activeRecognition: SpeechRecognitionInstance | null = null
 
 export function getSpeechRecognition(): SpeechRecognitionInstance | null {
   if (typeof window === "undefined") return null
@@ -43,6 +46,22 @@ export function stopSpeaking() {
   }
 }
 
+/** Stop an in-progress speech recognition session (e.g. when user ends the call). */
+export function stopListening() {
+  if (!activeRecognition) return
+  try {
+    activeRecognition.abort?.()
+  } catch {
+    // ignore
+  }
+  try {
+    activeRecognition.stop()
+  } catch {
+    // ignore
+  }
+  activeRecognition = null
+}
+
 export function listenOnce(timeoutMs = 15000): Promise<string> {
   return new Promise((resolve, reject) => {
     const recognition = getSpeechRecognition()
@@ -52,11 +71,13 @@ export function listenOnce(timeoutMs = 15000): Promise<string> {
     }
 
     const instance = recognition
+    activeRecognition = instance
     let finished = false
 
     function finish(result: { ok: true; value: string } | { ok: false; error: Error }) {
       if (finished) return
       finished = true
+      if (activeRecognition === instance) activeRecognition = null
       clearTimeout(timeout)
       try {
         instance.stop()

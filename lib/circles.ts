@@ -101,7 +101,7 @@ export async function buildTrustTx(trustee: string, label?: string): Promise<Enc
   return {
     to: tx.to!,
     data: tx.data,
-    value: tx.value ?? 0n,
+    value: tx.value ?? BigInt(0),
     label: label ?? "Trust avatar",
     description: `Trust ${trustee}`,
   }
