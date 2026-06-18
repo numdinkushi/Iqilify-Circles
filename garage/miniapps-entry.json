@@ -1,9 +1,9 @@
 {
   "slug": "iqilify",
   "name": "IQlify",
-  "logo": "https://iqilify-circles.vercel.app/api/og?score=84&track=builder",
+  "logo": "https://iqilify-circles.vercel.app/logo.svg",
   "url": "https://iqilify-circles.vercel.app/",
-  "description": "AI interview prep on Circles. Practice technical, behavioral, and builder tracks — score 70+ to earn CRC.",
-  "tags": ["garage", "education", "ai", "interviews"],
+  "description": "AI interview prep on Circles — practice technical, behavioral, and builder tracks, get scored, earn CRC rewards, and unlock debriefs.",
+  "tags": ["education", "ai", "interviews", "garage"],
   "category": "garage"
 }

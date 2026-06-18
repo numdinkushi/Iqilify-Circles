@@ -1,0 +1,31 @@
+IQlify — circles/garage submission (copy/paste into garage.aboutcircles.com/register)
+
+Live URL
+https://iqilify-circles.vercel.app/
+
+Playground test link
+https://circles.gnosis.io/playground?url=https%3A%2F%2Fiqilify-circles.vercel.app%2F
+
+Repo
+https://github.com/numdinkushi/Iqilify-Circles
+
+One-liner
+AI interview prep mini-app on Circles — practice with voice AI, score 70+ to earn CRC, pay 2 CRC to unlock full debrief on the leaderboard.
+
+Circles integration
+- @aboutcircles/miniapp-sdk — wallet connect, account creation, CRC transfers
+- requestCreateAccount() + referral invite links from in-app share kit
+- constructAdvancedTransfer() — 2 CRC debrief unlock payments to IQlify org treasury
+- getProfileView() — CRC balance on wallet page
+- Runs in Circles playground + miniapps iframe host
+
+Tracks
+- CompetentIQ (technical)
+- ReflectIQ (behavioral)
+- BuilderIQ (Circles/garage builder prep)
+
+Note for reviewers
+Voice interviews require opening the app in a direct browser tab (mic blocked in iframe until Circles host adds microphone to iframe allow). Wallet, referrals, leaderboard, and CRC payments work inside the Circles host.
+
+Miniapps marketplace PR
+Submit entry from garage/miniapps-entry.json to aboutcircles/CirclesMiniapps static/miniapps.json
