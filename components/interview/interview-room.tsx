@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { LoaderCircle, Mic } from "lucide-react"
+import { ExternalLink, LoaderCircle, Mic } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
@@ -18,7 +18,9 @@ import { shortenAddress } from "@/lib/referrals"
 import { isVapiCallsEnabled } from "@/lib/vapi/feature-flags"
 import { saveSession } from "@/lib/interview/storage"
 import type { InterviewTrack, SkillLevel } from "@/lib/interview/types"
+import { VoiceEmbedNotice } from "@/components/interview/voice-embed-notice"
 import { useDuelChallenge } from "@/hooks/use-duel-challenge"
+import { isEmbeddedFrame, getDirectAppUrl } from "@/lib/embed/microphone"
 
 const DURATIONS = [5, 10, 15] as const
 const SKILL_LEVELS: { value: SkillLevel; label: string }[] = [
@@ -27,7 +29,7 @@ const SKILL_LEVELS: { value: SkillLevel; label: string }[] = [
   { value: "advanced", label: "Advanced" },
 ]
 
-export function InterviewRoom() {
+export function InterviewRoom() { 
   const router = useRouter()
   const { address, isConnected, isMiniappHost, referralInviter, referralSecret } = useWallet()
   const { challenge: duelChallenge } = useDuelChallenge()
@@ -39,6 +41,14 @@ export function InterviewRoom() {
   const [loading, setLoading] = React.useState(false)
 
   const canStart = isConnected || !isMiniappHost
+  const [voiceBlockedInEmbed, setVoiceBlockedInEmbed] = React.useState(false)
+  const [directInterviewUrl, setDirectInterviewUrl] = React.useState("")
+
+  React.useEffect(() => {
+    const blocked = isMiniappHost || isEmbeddedFrame()
+    setVoiceBlockedInEmbed(blocked)
+    if (blocked) setDirectInterviewUrl(getDirectAppUrl("/interview"))
+  }, [isMiniappHost])
 
   React.useEffect(() => {
     const saved = window.localStorage.getItem("iqlify:default-track") as InterviewTrack | null
@@ -203,19 +213,32 @@ export function InterviewRoom() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
-        <Badge variant="secondary" className="mb-2">
-          Microphone required
-        </Badge>
-        <p>
-          You&apos;ll speak with an AI interviewer in real time. Grant mic access when prompted.
-        </p>
-      </div>
+      {voiceBlockedInEmbed ? (
+        <VoiceEmbedNotice href={directInterviewUrl || undefined} />
+      ) : (
+        <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
+          <Badge variant="secondary" className="mb-2">
+            Microphone required
+          </Badge>
+          <p>
+            You&apos;ll speak with an AI interviewer in real time. Grant mic access when prompted.
+          </p>
+        </div>
+      )}
 
-      <Button className="w-full" onClick={startInterview} disabled={loading || !canStart}>
-        {loading ? <LoaderCircle className="animate-spin" /> : <Mic />}
-        Begin voice interview
-      </Button>
+      {voiceBlockedInEmbed && directInterviewUrl ? (
+        <Button asChild className="w-full">
+          <a href={directInterviewUrl} target="_blank" rel="noopener noreferrer">
+            <ExternalLink />
+            Open for voice interview
+          </a>
+        </Button>
+      ) : (
+        <Button className="w-full" onClick={startInterview} disabled={loading || !canStart}>
+          {loading ? <LoaderCircle className="animate-spin" /> : <Mic />}
+          Begin voice interview
+        </Button>
+      )}
     </div>
   )
 }

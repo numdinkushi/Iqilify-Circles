@@ -15,13 +15,15 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { BrowserVoiceInterface } from "@/components/interview/browser-voice-interface"
+import { VoiceEmbedNotice } from "@/components/interview/voice-embed-notice"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { isEmbeddedFrame } from "@/lib/embed/microphone"
 import { getAssistantIdForTrack, VapiService } from "@/lib/vapi-service"
 import { BROWSER_VOICE_REASON, isVapiCallsEnabled } from "@/lib/vapi/feature-flags"
-import { isVapiBillingError, parseVapiError } from "@/lib/vapi/parse-error"
+import { isMicPermissionError, isVapiBillingError, parseVapiError } from "@/lib/vapi/parse-error"
 import { saveSession, loadSession } from "@/lib/interview/storage"
 import { TRACK_META } from "@/lib/interview/prompts"
 import type { InterviewSession } from "@/lib/interview/types"
@@ -44,8 +46,13 @@ export function VoiceInterface({ session }: { session: InterviewSession }) {
     !vapiEnabled || session.voiceMode === "browser"
   )
   const [hasEnded, setHasEnded] = React.useState(false)
+  const [voiceBlockedInEmbed, setVoiceBlockedInEmbed] = React.useState(false)
   const timerRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
   const startedRef = React.useRef(false)
+
+  React.useEffect(() => {
+    setVoiceBlockedInEmbed(isEmbeddedFrame())
+  }, [])
 
   React.useEffect(() => {
     if (session.voiceMode === "browser") {
@@ -99,11 +106,17 @@ export function VoiceInterface({ session }: { session: InterviewSession }) {
         return
       }
 
+      if (voiceBlockedInEmbed && isMicPermissionError(message)) {
+        setError(message)
+        setConnectionStatus("error")
+        return
+      }
+
       setError(message)
       setConnectionStatus("error")
       toast.error(message)
     },
-    [switchToBrowser]
+    [switchToBrowser, voiceBlockedInEmbed]
   )
 
   const startCall = React.useCallback(async () => {
@@ -269,28 +282,33 @@ export function VoiceInterface({ session }: { session: InterviewSession }) {
           )}
 
           {error ? (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-              {error}
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    startedRef.current = false
-                    startCall()
-                  }}
-                >
-                  Retry Vapi
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    switchToBrowser("Switched to browser voice mode after Vapi connection failed.")
-                  }
-                >
-                  Use browser voice
-                </Button>
+            <div className="space-y-3">
+              <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                {error}
+                {!(voiceBlockedInEmbed && isMicPermissionError(error)) ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        startedRef.current = false
+                        startCall()
+                      }}
+                    >
+                      Retry Vapi
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        switchToBrowser("Switched to browser voice mode after Vapi connection failed.")
+                      }
+                    >
+                      Use browser voice
+                    </Button>
+                  </div>
+                ) : null}
               </div>
+              {voiceBlockedInEmbed && isMicPermissionError(error) ? <VoiceEmbedNotice /> : null}
             </div>
           ) : null}
 

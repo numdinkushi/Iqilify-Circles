@@ -28,6 +28,17 @@ export function parseVapiError(error: unknown): string {
   return "Call failed"
 }
 
+export function isMicPermissionError(message: string) {
+  const lower = message.toLowerCase()
+  return (
+    lower.includes("permission denied") ||
+    lower.includes("not-allowed") ||
+    lower.includes("not allowed") ||
+    lower.includes("microphone permission") ||
+    lower.includes("microphone access required")
+  )
+}
+
 export function isVapiBillingError(message: string) {
   const lower = message.toLowerCase()
   return (
