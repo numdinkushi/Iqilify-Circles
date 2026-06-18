@@ -7,217 +7,100 @@ import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { IntelligentGradingSystem } from "@/lib/intelligent-grading"
 import { useSyncSessionToConvex } from "@/lib/convex/client"
-import { saveSession } from "@/lib/interview/storage"
-import { gradingToScoreBreakdown, type InterviewSession } from "@/lib/interview/types"
-
-type GradingData = {
-  overallScore?: number
-  summary?: string
-  keyHighlights?: string[]
-  areasForImprovement?: string[]
-  recommendation?: string
-}
-
-function isValidUUID(str: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)
-}
+import { loadSession, saveSession } from "@/lib/interview/storage"
+import type { InterviewSession } from "@/lib/interview/types"
 
 export function GradingScreen({ session }: { session: InterviewSession }) {
   const router = useRouter()
   const { syncSession } = useSyncSessionToConvex()
-  const gradedRef = React.useRef(false)
   const [isGrading, setIsGrading] = React.useState(() => !session.completed || !session.score)
   const [error, setError] = React.useState<string | null>(null)
-  const [finalScore, setFinalScore] = React.useState(0)
-  const [feedback, setFeedback] = React.useState("")
-  const [strengths, setStrengths] = React.useState<string[]>([])
-  const [improvements, setImprovements] = React.useState<string[]>([])
-  const [recommendation, setRecommendation] = React.useState("maybe")
+  const [finalScore, setFinalScore] = React.useState(session.score?.overall ?? 0)
+  const [feedback, setFeedback] = React.useState(session.feedback ?? "")
+  const [strengths, setStrengths] = React.useState<string[]>(session.strengths ?? [])
+  const [improvements, setImprovements] = React.useState<string[]>(session.areasForImprovement ?? [])
+  const [recommendation, setRecommendation] = React.useState(session.recommendation ?? "maybe")
 
   React.useEffect(() => {
-    if (gradedRef.current || session.completed) return
-    gradedRef.current = true
+    const current = loadSession(session.id) || session
+    const needsRegrade =
+      current.completed &&
+      current.voiceMode === "vapi" &&
+      (current.score?.overall === 0 || current.recommendation === "retry") &&
+      !current.localTranscript
+
+    if (current.completed && current.score && !needsRegrade) {
+      setIsGrading(false)
+      return
+    }
 
     let cancelled = false
-    const sessionId = session.id
 
     async function grade() {
-      try {
-        let gradingData: GradingData | null = null
+      const latest = loadSession(session.id) || session
 
-        const gradeRes = await fetch("/api/vapi/grade-session", {
+      try {
+        const res = await fetch("/api/interview/grade", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            sessionId: session.id,
-            vapiCallId: session.vapiCallId,
-            role: session.role,
-            skillLevel: session.skillLevel,
-            duration: session.duration,
-            interviewType: session.interviewType,
-            transcript: session.localTranscript,
+            sessionId: latest.id,
+            vapiCallId: latest.vapiCallId,
+            voiceMode: latest.voiceMode,
+            track: latest.track,
+            role: latest.role,
+            skillLevel: latest.skillLevel,
+            duration: latest.duration,
+            createdAt: latest.createdAt,
+            messages: latest.messages,
+            transcript: latest.localTranscript,
           }),
         })
 
-        if (gradeRes.ok) {
-          const gradeResult = await gradeRes.json()
-          if (gradeResult.success && gradeResult.gradingResults) {
-            gradingData = gradeResult.gradingResults as GradingData
-          }
-        }
-
-        if (!gradingData) {
-          const lookupId = session.vapiCallId || session.id
-          for (let attempt = 0; attempt < 6; attempt++) {
-            const res = await fetch(
-              `/api/vapi/grading?callId=${lookupId}&sessionId=${session.id}`
-            )
-            if (res.ok) {
-              const data = await res.json()
-              if (data.success && data.gradingResults) {
-                gradingData = data.gradingResults as GradingData
-                break
-              }
-            }
-            await new Promise((r) => setTimeout(r, 2000))
-          }
-        }
-
-        if (!gradingData && session.vapiCallId && isValidUUID(session.vapiCallId)) {
-          const callRes = await fetch(`/api/vapi/call?callId=${session.vapiCallId}`)
-          if (callRes.ok) {
-            const callResult = await callRes.json()
-            const callData = callResult.callData
-
-            let transcript = ""
-            if (Array.isArray(callData.transcript)) {
-              transcript = callData.transcript
-                .map((msg: { role?: string; content?: string; text?: string }) =>
-                  `${msg.role || "Unknown"}: ${msg.content || msg.text || ""}`
-                )
-                .join("\n")
-            } else if (typeof callData.transcript === "string") {
-              transcript = callData.transcript
-            }
-
-            const duration = Number(callData.duration) || session.duration * 60
-            const transcriptWords = transcript.split(/\s+/).filter(Boolean).length
-            const candidateMessageCount = (transcript.toLowerCase().match(/user:|candidate:/g) || []).length
-
-            let aiScore: number | undefined
-            if (transcriptWords >= 50) {
-              const analyzeRes = await fetch("/api/vapi/analyze", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  transcript,
-                  role: session.role,
-                  level: session.skillLevel,
-                }),
-              })
-              if (analyzeRes.ok) {
-                const analyzeData = await analyzeRes.json()
-                if (analyzeData.success && analyzeData.grading?.overallScore) {
-                  aiScore = analyzeData.grading.overallScore
-                }
-              }
-            }
-
-            const result = IntelligentGradingSystem.gradeInterview(
-              {
-                duration,
-                transcriptLength: transcript.length,
-                transcriptWords,
-                candidateMessageCount: Math.max(candidateMessageCount, 1),
-                transcript: transcript || "No transcript",
-                interviewType: session.interviewType,
-                skillLevel: session.skillLevel,
-                expectedDuration: session.duration * 60,
-              },
-              aiScore
-            )
-
-            gradingData = {
-              overallScore: result.score / 10,
-              summary: result.feedback,
-              keyHighlights: result.strengths,
-              areasForImprovement: result.areasForImprovement,
-              recommendation: result.recommendation,
-            }
-
-            await fetch("/api/vapi/grading", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                callId: session.vapiCallId,
-                sessionId: session.id,
-                gradingResults: gradingData,
-              }),
-            })
-          }
-        }
-
-        if (!gradingData) {
-          const result = IntelligentGradingSystem.gradeInterview({
-            duration: session.duration * 60,
-            transcriptLength: 0,
-            transcriptWords: 0,
-            candidateMessageCount: 0,
-            transcript: "",
-            interviewType: session.interviewType,
-            skillLevel: session.skillLevel,
-            expectedDuration: session.duration * 60,
-          })
-          gradingData = {
-            overallScore: result.score / 10,
-            summary: result.feedback,
-            keyHighlights: result.strengths,
-            areasForImprovement: result.areasForImprovement,
-            recommendation: result.recommendation,
-          }
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Could not grade interview")
         }
 
         if (cancelled) return
 
-        const rawScore = gradingData?.overallScore ?? 0
-        const score = Math.min(100, Math.max(0, Math.round(rawScore * 10)))
-        const scoreBreakdown = gradingToScoreBreakdown(rawScore, session.track)
-
         const completed: InterviewSession = {
-          ...session,
+          ...latest,
           status: "completed",
           completed: true,
-          score: { ...scoreBreakdown, overall: score },
-          feedback: gradingData?.summary || "Interview evaluation completed.",
-          strengths: gradingData?.keyHighlights || [],
-          areasForImprovement: gradingData?.areasForImprovement || [],
-          recommendation: gradingData?.recommendation || "maybe",
+          score: data.score,
+          feedback: data.feedback,
+          strengths: data.strengths,
+          areasForImprovement: data.areasForImprovement,
+          recommendation: data.recommendation,
+          localTranscript: data.transcript || latest.localTranscript,
+          vapiCallId: data.vapiCallId || latest.vapiCallId,
         }
+
         saveSession(completed)
         void syncSession(completed)
 
-        setFinalScore(score)
-        setFeedback(completed.feedback || "")
-        setStrengths(completed.strengths || [])
-        setImprovements(completed.areasForImprovement || [])
-        setRecommendation(completed.recommendation || "maybe")
+        setFinalScore(data.score.overall)
+        setFeedback(data.feedback)
+        setStrengths(data.strengths)
+        setImprovements(data.areasForImprovement)
+        setRecommendation(data.recommendation)
         setIsGrading(false)
-        router.replace(`/interview/${sessionId}`)
+        router.replace(`/interview/${latest.id}`)
       } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Grading failed")
-          setIsGrading(false)
-        }
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Grading failed")
+        setIsGrading(false)
       }
     }
 
-    grade()
+    void grade()
+
     return () => {
       cancelled = true
     }
-  }, [session.id, session.completed, syncSession, router])
+  }, [session.id, session.completed, session.score, syncSession, router])
 
   if (isGrading) {
     return (
@@ -227,7 +110,9 @@ export function GradingScreen({ session }: { session: InterviewSession }) {
           <div>
             <p className="font-medium">Grading your interview</p>
             <p className="text-sm text-muted-foreground">
-              Analyzing transcript with AI…
+              {session.vapiCallId
+                ? "Pulling Vapi call logs and analyzing with AI…"
+                : "Scoring your answers…"}
             </p>
           </div>
         </CardContent>
@@ -257,7 +142,9 @@ export function GradingScreen({ session }: { session: InterviewSession }) {
           <Trophy className="size-4 text-emerald-600" />
           Grading complete
         </CardTitle>
-        <CardDescription>Score: {finalScore}/100 · {recommendation}</CardDescription>
+        <CardDescription>
+          Score: {finalScore}/100 · {recommendation}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">{feedback}</p>
@@ -268,8 +155,8 @@ export function GradingScreen({ session }: { session: InterviewSession }) {
               Strengths
             </Badge>
             <ul className="space-y-1 text-sm">
-              {strengths.map((s) => (
-                <li key={s}>• {s}</li>
+              {strengths.map((item) => (
+                <li key={item}>• {item}</li>
               ))}
             </ul>
           </div>
@@ -280,8 +167,8 @@ export function GradingScreen({ session }: { session: InterviewSession }) {
               Areas to improve
             </p>
             <ul className="space-y-1 text-sm">
-              {improvements.map((s) => (
-                <li key={s}>• {s}</li>
+              {improvements.map((item) => (
+                <li key={item}>• {item}</li>
               ))}
             </ul>
           </div>

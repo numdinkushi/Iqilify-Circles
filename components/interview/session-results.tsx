@@ -28,7 +28,7 @@ import { recordTimelineEvent } from "@/lib/timeline/storage"
 import { markQuestFlag } from "@/lib/quests/evaluate"
 import type { InterviewSession } from "@/lib/interview/types"
 
-const ORG_ADDRESS = process.env.NEXT_PUBLIC_IQLIFY_ORG_ADDRESS
+const ORG_ADDRESS = process.env.NEXT_PUBLIC_IQLIFY_ORG_ADDRESS?.trim()
 
 export function SessionResults({ sessionId }: { sessionId: string }) {
   const { address, isMiniappHost } = useWallet()
@@ -44,6 +44,8 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
   const [inviting, setInviting] = React.useState(false)
   const [displayName, setDisplayName] = React.useState("Anonymous builder")
   const [timelineLogged, setTimelineLogged] = React.useState(false)
+  const [regrading, setRegrading] = React.useState(false)
+  const regradedRef = React.useRef(false)
 
   const rewardConfig = getRewardConfig()
   const eligibleReward = session?.score ? rewardAmountForScore(session.score.overall) : 0
@@ -84,6 +86,53 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
     refreshQuests()
   }, [address, session?.score, session?.track, timelineLogged, bumpStat, refreshQuests])
 
+  React.useEffect(() => {
+    if (!session || regradedRef.current || regrading) return
+    const needsRegrade =
+      session.voiceMode === "vapi" &&
+      session.score?.overall === 0 &&
+      session.recommendation === "retry" &&
+      !session.localTranscript
+
+    if (!needsRegrade) return
+    regradedRef.current = true
+    setRegrading(true)
+
+    void fetch("/api/interview/grade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: session.id,
+        vapiCallId: session.vapiCallId,
+        voiceMode: session.voiceMode,
+        track: session.track,
+        role: session.role,
+        skillLevel: session.skillLevel,
+        duration: session.duration,
+        createdAt: session.createdAt,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.success || !data.score) return
+        const next: InterviewSession = {
+          ...session,
+          score: data.score,
+          feedback: data.feedback,
+          strengths: data.strengths,
+          areasForImprovement: data.areasForImprovement,
+          recommendation: data.recommendation,
+          localTranscript: data.transcript || session.localTranscript,
+          vapiCallId: data.vapiCallId || session.vapiCallId,
+        }
+        setSession(next)
+        saveSession(next)
+        void syncSession(next)
+      })
+      .catch(() => undefined)
+      .finally(() => setRegrading(false))
+  }, [regrading, session, setSession, syncSession])
+
   if (!ready) {
     return <SessionLoading />
   }
@@ -108,46 +157,35 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
   const locked = !session.debriefUnlocked
   const previewTip = session.feedback || tips[0]
 
-  async function unlockDebrief() {
-    if (!session?.score || !address || !ORG_ADDRESS) {
-      toast.error("Set NEXT_PUBLIC_IQLIFY_ORG_ADDRESS to enable CRC unlocks")
-      return
-    }
+  async function finishDebriefUnlock(walletAddress: string) {
+    if (!session?.score) return
 
-    setPaying(true)
-    try {
-      await payForDebrief({
-        from: address,
-        to: ORG_ADDRESS,
-        amountCrc: DEBRIEF_COST_CRC,
-        sessionId: session.id,
-      })
+    const next: InterviewSession = { ...session, debriefUnlocked: true }
+    setSession(next)
+    saveSession(next)
+    void syncSession(next)
 
-      const next: InterviewSession = { ...session, debriefUnlocked: true }
-      setSession(next)
-      saveSession(next)
-      void syncSession(next)
+    addLeaderboardEntry({
+      id: crypto.randomUUID(),
+      address: walletAddress,
+      displayName,
+      avatarUrl: profile?.avatarUrl,
+      track: session.track,
+      score: session.score.overall,
+      sessionId: session.id,
+      createdAt: Date.now(),
+    })
 
-      addLeaderboardEntry({
-        id: crypto.randomUUID(),
-        address,
-        displayName,
-        avatarUrl: profile?.avatarUrl,
-        track: session.track,
-        score: session.score.overall,
-        sessionId: session.id,
-        createdAt: Date.now(),
-      })
+    void addToConvexLeaderboard({
+      sessionId: session.id,
+      address: walletAddress,
+      displayName,
+      avatarUrl: profile?.avatarUrl,
+      track: session.track,
+      score: session.score.overall,
+    })
 
-      void addToConvexLeaderboard({
-        sessionId: session.id,
-        address,
-        displayName,
-        avatarUrl: profile?.avatarUrl,
-        track: session.track,
-        score: session.score.overall,
-      })
-
+    if (address) {
       recordTimelineEvent(address, {
         type: "leaderboard_joined",
         title: "Leaderboard entry posted",
@@ -157,13 +195,55 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
       recordTimelineEvent(address, {
         type: "debrief_unlocked",
         title: "Full debrief unlocked",
-        detail: `Paid ${DEBRIEF_COST_CRC} CRC for AI feedback.`,
+        detail: isMiniappHost
+          ? `Paid ${DEBRIEF_COST_CRC} CRC for AI feedback.`
+          : "Unlocked in standalone dev mode.",
       })
+    }
 
-      toast.success("Full debrief unlocked — you are on the leaderboard")
-      refreshQuests()
+    toast.success(
+      isMiniappHost
+        ? "Full debrief unlocked — you are on the leaderboard"
+        : "Full debrief unlocked — posted to local leaderboard",
+    )
+    refreshQuests()
+  }
+
+  async function unlockDebrief() {
+    if (!session?.score) return
+
+    if (isMiniappHost) {
+      if (!ORG_ADDRESS) {
+        toast.error("Set NEXT_PUBLIC_IQLIFY_ORG_ADDRESS in .env.local to enable CRC payments.")
+        return
+      }
+      if (!address) {
+        toast.error("Connect your Circles wallet to pay with CRC.")
+        return
+      }
+
+      setPaying(true)
+      try {
+        await payForDebrief({
+          from: address,
+          to: ORG_ADDRESS,
+          amountCrc: DEBRIEF_COST_CRC,
+          sessionId: session.id,
+        })
+        await finishDebriefUnlock(address)
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Payment failed")
+      } finally {
+        setPaying(false)
+      }
+      return
+    }
+
+    setPaying(true)
+    try {
+      await finishDebriefUnlock(`standalone:${session.id.slice(0, 8)}`)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Payment failed")
+      toast.error(error instanceof Error ? error.message : "Could not unlock debrief")
     } finally {
       setPaying(false)
     }
@@ -353,7 +433,7 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
             </Card>
           ) : session.score.overall < rewardConfig.minScore ? (
             <p className="rounded-xl border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              Score {session.score.overall}/{rewardConfig.minScore} needed to earn CRC rewards.
+              Score {session.score.overall}/100 — need {rewardConfig.minScore}+ to earn CRC rewards.
             </p>
           ) : !address ? (
             <p className="rounded-xl border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
@@ -366,17 +446,35 @@ export function SessionResults({ sessionId }: { sessionId: string }) {
               <CardContent className="space-y-3 pt-6">
                 <p className="text-sm text-muted-foreground">Preview: {previewTip}</p>
                 <p className="text-sm">
-                  Unlock the full AI debrief and post your score to the leaderboard for{" "}
-                  <strong>{DEBRIEF_COST_CRC} CRC</strong>.
+                  Unlock the full AI debrief and post your score to the leaderboard
+                  {isMiniappHost ? (
+                    <>
+                      {" "}
+                      for <strong>{DEBRIEF_COST_CRC} CRC</strong>.
+                    </>
+                  ) : (
+                    <> (free in standalone dev mode).</>
+                  )}
                 </p>
-                {!ORG_ADDRESS ? (
+                {isMiniappHost && !ORG_ADDRESS ? (
                   <p className="text-xs text-amber-700 dark:text-amber-300">
                     Set NEXT_PUBLIC_IQLIFY_ORG_ADDRESS in .env.local to enable CRC payments.
                   </p>
                 ) : null}
-                <Button className="w-full" onClick={unlockDebrief} disabled={paying || !ORG_ADDRESS}>
+                {isMiniappHost && ORG_ADDRESS && !address ? (
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    Open IQlify inside Circles and connect your wallet to pay with CRC.
+                  </p>
+                ) : null}
+                <Button
+                  className="w-full"
+                  onClick={unlockDebrief}
+                  disabled={paying || (isMiniappHost && (!ORG_ADDRESS || !address))}
+                >
                   {paying ? <LoaderCircle className="animate-spin" /> : null}
-                  Pay {DEBRIEF_COST_CRC} CRC · unlock debrief
+                  {isMiniappHost
+                    ? `Pay ${DEBRIEF_COST_CRC} CRC · unlock debrief`
+                    : "Unlock debrief · post to leaderboard"}
                 </Button>
               </CardContent>
             </Card>

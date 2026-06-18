@@ -11,7 +11,8 @@ function isValidUUID(str: string) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { sessionId, vapiCallId, role, skillLevel, duration, interviewType, transcript } = body
+    const { sessionId, vapiCallId, role, skillLevel, duration, interviewType, transcript, track } =
+      body
 
     if (!sessionId && !vapiCallId && !transcript) {
       return NextResponse.json({ success: false, error: "sessionId or vapiCallId required" }, { status: 400 })
@@ -24,6 +25,7 @@ export async function POST(request: NextRequest) {
         skillLevel,
         expectedDurationMinutes: duration || 10,
         interviewType,
+        track,
       })
       storeGrading(sessionId || vapiCallId || "browser", grading, { sessionId, callId: vapiCallId })
       return NextResponse.json({ success: true, gradingResults: grading, sessionId })
@@ -52,6 +54,7 @@ export async function POST(request: NextRequest) {
       skillLevel,
       expectedDurationMinutes: duration || 10,
       interviewType,
+      track,
     })
 
     storeGrading(callId, grading, { callId, sessionId })

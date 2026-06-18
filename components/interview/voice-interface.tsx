@@ -22,7 +22,7 @@ import { Progress } from "@/components/ui/progress"
 import { getAssistantIdForTrack, VapiService } from "@/lib/vapi-service"
 import { BROWSER_VOICE_REASON, isVapiCallsEnabled } from "@/lib/vapi/feature-flags"
 import { isVapiBillingError, parseVapiError } from "@/lib/vapi/parse-error"
-import { saveSession } from "@/lib/interview/storage"
+import { saveSession, loadSession } from "@/lib/interview/storage"
 import { TRACK_META } from "@/lib/interview/prompts"
 import type { InterviewSession } from "@/lib/interview/types"
 
@@ -61,21 +61,33 @@ export function VoiceInterface({ session }: { session: InterviewSession }) {
     })
   }, [])
 
-  const endInterview = React.useCallback(async () => {
-    if (hasEnded) return
-    setHasEnded(true)
-    setIsActive(false)
-    if (timerRef.current) clearInterval(timerRef.current)
+  const endingRef = React.useRef(false)
 
-    const callId = VapiService.getInstance().getActiveCallId()
-    const next: InterviewSession = {
-      ...session,
-      status: "grading",
-      vapiCallId: callId || session.vapiCallId,
-    }
-    saveSession(next)
-    router.replace(`/interview/${session.id}?status=grading`)
-  }, [hasEnded, router, session])
+  const endInterview = React.useCallback(
+    async (explicitCallId?: string) => {
+      if (hasEnded || endingRef.current) return
+      endingRef.current = true
+      setHasEnded(true)
+      setIsActive(false)
+      if (timerRef.current) clearInterval(timerRef.current)
+
+      const latest = loadSession(session.id) || session
+      const callId =
+        explicitCallId ||
+        VapiService.getInstance().getCallIdForGrading() ||
+        latest.vapiCallId
+
+      const next: InterviewSession = {
+        ...latest,
+        status: "grading",
+        voiceMode: "vapi",
+        vapiCallId: callId,
+      }
+      saveSession(next)
+      router.replace(`/interview/${session.id}?status=grading`)
+    },
+    [hasEnded, router, session],
+  )
 
   const handleVapiError = React.useCallback(
     (err: unknown) => {
@@ -118,6 +130,7 @@ export function VoiceInterface({ session }: { session: InterviewSession }) {
 
       const call = await vapi.startCall({
         assistantId,
+        sessionId: session.id,
         duration: session.duration,
         role: session.role,
         company: session.company,
@@ -127,6 +140,7 @@ export function VoiceInterface({ session }: { session: InterviewSession }) {
           clearTimeout(timeout)
           setConnectionStatus("connected")
           setIsActive(true)
+          if (!callId) return
           saveSession({
             ...session,
             status: "in_progress",
@@ -134,9 +148,9 @@ export function VoiceInterface({ session }: { session: InterviewSession }) {
             vapiCallId: callId,
           })
         },
-        onCallEnd: () => {
+        onCallEnd: (callId) => {
           clearTimeout(timeout)
-          endInterview()
+          void endInterview(callId)
         },
         onError: (err: unknown) => {
           clearTimeout(timeout)
@@ -175,7 +189,7 @@ export function VoiceInterface({ session }: { session: InterviewSession }) {
     timerRef.current = setInterval(() => {
       setTimeRemaining((prev) => {
         if (prev <= 1) {
-          endInterview()
+          void endInterview(VapiService.getInstance().getCallIdForGrading() || session.vapiCallId)
           return 0
         }
         return prev - 1
@@ -187,10 +201,11 @@ export function VoiceInterface({ session }: { session: InterviewSession }) {
   }, [endInterview, isActive, timeRemaining])
 
   async function handleEndCall() {
+    const callId = VapiService.getInstance().getCallIdForGrading() || session.vapiCallId
     try {
       await VapiService.getInstance().endCall()
     } finally {
-      endInterview()
+      await endInterview(callId)
     }
   }
 
