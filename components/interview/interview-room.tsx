@@ -29,7 +29,7 @@ const SKILL_LEVELS: { value: SkillLevel; label: string }[] = [
   { value: "advanced", label: "Advanced" },
 ]
 
-export function InterviewRoom() {
+export function InterviewRoom() { 
   const router = useRouter()
   const { address, isConnected, isMiniappHost, referralInviter, referralSecret } = useWallet()
   const { challenge: duelChallenge } = useDuelChallenge()
