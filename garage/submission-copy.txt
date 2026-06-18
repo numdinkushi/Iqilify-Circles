@@ -29,3 +29,4 @@ Voice interviews require opening the app in a direct browser tab (mic blocked in
 
 Miniapps marketplace PR
 Submit entry from garage/miniapps-entry.json to aboutcircles/CirclesMiniapps static/miniapps.json
+ 
