@@ -18,6 +18,7 @@ const fontMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
   title: "IQlify · AI interview prep on Circles",
   description:
     "Master interviews with AI. Practice, get scored, unlock debriefs with CRC on Circles.",
